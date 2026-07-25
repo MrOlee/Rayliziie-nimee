@@ -1,30 +1,28 @@
-// ============================================
-// RAYLIZIIE NIME - Main JavaScript (FULL STREAMING)
-// API: https://api.jikan.moe/v4 + consumet fallback
-// ============================================
+// ============================================================
+// RAYLIZIIE NIME - Main JavaScript
+// API: https://api.jikan.moe/v4
+// Tampilan seperti Otakudesu
+// ============================================================
 
 const API_BASE = 'https://api.jikan.moe/v4';
-const CONSUMET_API = 'https://api.consumet.org/anime/gogoanime';
 
 // State
 let currentPage = 'home';
 let currentPageNum = 1;
-let currentQuery = '';
+let currentAnimeId = null;
 let currentAnimeTitle = '';
-let currentAnimeId = '';
+let currentEpisode = 1;
+let currentSource = 'otakudesu';
 
 // DOM
 const mainContent = document.getElementById('mainContent');
 const searchInput = document.getElementById('searchInput');
 const searchBtn = document.getElementById('searchBtn');
-const modal = document.getElementById('detailModal');
-const modalBody = document.getElementById('modalBody');
-const modalClose = document.getElementById('modalClose');
-const navLinks = document.querySelectorAll('nav a');
+const navLinks = document.querySelectorAll('.nav a');
 
-// ============================================
+// ============================================================
 // API CALLS
-// ============================================
+// ============================================================
 
 async function fetchJikan(endpoint) {
     try {
@@ -32,23 +30,12 @@ async function fetchJikan(endpoint) {
         console.log('🔍 Fetching:', url);
         const res = await fetch(url);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return await res.json();
+        const data = await res.json();
+        console.log('✅ Data received:', data);
+        return data;
     } catch (err) {
-        console.error('❌ Jikan Error:', err.message);
+        console.error('❌ API Error:', err.message);
         showError(`Gagal memuat data: ${err.message}`);
-        return null;
-    }
-}
-
-async function fetchConsumet(endpoint) {
-    try {
-        const url = `${CONSUMET_API}${endpoint}`;
-        console.log('🔍 Fetching consumet:', url);
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return await res.json();
-    } catch (err) {
-        console.warn('⚠️ Consumet API error:', err.message);
         return null;
     }
 }
@@ -56,48 +43,45 @@ async function fetchConsumet(endpoint) {
 function showError(msg) {
     mainContent.innerHTML = `
         <div style="text-align:center;padding:60px 20px;color:var(--text-gray);">
-            <div style="font-size:48px;margin-bottom:16px;">⚠️</div>
-            <p style="font-size:18px;font-weight:600;color:var(--text-white);">${msg}</p>
-            <p style="margin-top:8px;font-size:14px;">Coba refresh halaman atau periksa koneksi internet.</p>
-            <button onclick="location.reload()" style="margin-top:20px;background:var(--primary);border:none;color:white;padding:10px 28px;border-radius:40px;font-weight:700;cursor:pointer;">🔄 Refresh</button>
+            <p style="font-size:18px;font-weight:600;color:var(--text-white);">⚠️ ${msg}</p>
+            <p style="margin-top:8px;font-size:14px;">Coba refresh halaman.</p>
+            <button onclick="location.reload()" style="margin-top:16px;background:var(--primary);border:none;color:white;padding:10px 28px;border-radius:30px;font-weight:700;cursor:pointer;">🔄 Refresh</button>
         </div>
     `;
 }
 
-// ============================================
-// RENDER FUNCTIONS
-// ============================================
+// ============================================================
+// RENDER: HOME / GRID
+// ============================================================
 
-function renderAnimeGrid(data, title = 'Anime') {
+function renderAnimeGrid(data, title = 'Anime', subtitle = '') {
     if (!data || !data.data) {
         showError('Data tidak valid dari server.');
         return;
     }
 
     const animeList = data.data;
-    if (!Array.isArray(animeList) || animeList.length === 0) {
+    if (!animeList || animeList.length === 0) {
         mainContent.innerHTML = `
-            <div class="section-title">${title}</div>
-            <p style="color: var(--text-gray); text-align: center; padding: 40px 0;">
-                Tidak ada anime ditemukan.
-            </p>
+            <div class="section-title">${title} <span>${subtitle}</span></div>
+            <p style="color: var(--text-gray); text-align: center; padding: 40px 0;">Tidak ada anime ditemukan.</p>
         `;
         return;
     }
 
-    let html = `<div class="section-title">${title} <span>${animeList.length}</span></div>`;
+    let html = `<div class="section-title">${title} <span>${subtitle}</span></div>`;
     html += `<div class="anime-grid">`;
 
     animeList.forEach(anime => {
         const id = anime.mal_id || '';
         const titleText = anime.title || 'Tanpa Judul';
-        const image = anime.images?.jpg?.image_url || 'https://via.placeholder.com/300x450/1A1735/6C2BD9?text=No+Image';
+        const image = anime.images?.jpg?.image_url || 'https://via.placeholder.com/300x450/1a1735/6c2bd9?text=No+Image';
         const episode = anime.episodes || '-';
         const type = anime.type || 'TV';
 
         html += `
-            <div class="anime-card" onclick="openDetail(${id})">
-                <img src="${image}" alt="${titleText}" loading="lazy" onerror="this.src='https://via.placeholder.com/300x450/1A1735/6C2BD9?text=Error'"/>
+            <div class="anime-card" onclick="loadDetail(${id})">
+                <img src="${image}" alt="${titleText}" loading="lazy" onerror="this.src='https://via.placeholder.com/300x450/1a1735/6c2bd9?text=Error'"/>
                 <div class="info">
                     <h3>${titleText}</h3>
                     <div class="meta">
@@ -113,9 +97,9 @@ function renderAnimeGrid(data, title = 'Anime') {
     mainContent.innerHTML = html;
 }
 
-// ============================================
-// LOAD FUNCTIONS
-// ============================================
+// ============================================================
+// LOAD PAGE
+// ============================================================
 
 async function loadPage(page = 'home', pageNum = 1) {
     currentPage = page;
@@ -125,39 +109,158 @@ async function loadPage(page = 'home', pageNum = 1) {
 
     let endpoint = '';
     let title = '';
+    let subtitle = '';
 
     switch (page) {
         case 'home':
             endpoint = `/seasons/now?page=${pageNum}&limit=20`;
-            title = '🏠 Anime Musim Ini';
+            title = '🏠 HOME';
+            subtitle = 'Anime Musim Ini';
             break;
         case 'ongoing':
             endpoint = `/seasons/now?page=${pageNum}&limit=20`;
-            title = '🔥 Ongoing Anime';
+            title = '🔥 ON-GOING ANIME';
+            subtitle = 'Anime yang sedang tayang';
             break;
         case 'complete':
             endpoint = `/top/anime?page=${pageNum}&limit=20&filter=airing`;
-            title = '✅ Completed Anime';
+            title = '✅ COMPLETED ANIME';
+            subtitle = 'Anime yang sudah selesai';
             break;
         case 'schedule':
             endpoint = `/seasons/upcoming?page=${pageNum}&limit=20`;
-            title = '📅 Jadwal Rilis Anime';
+            title = '📅 JADWAL RILIS';
+            subtitle = 'Anime yang akan datang';
             break;
+        case 'genres':
+            await loadGenres();
+            return;
         default:
             endpoint = `/seasons/now?page=${pageNum}&limit=20`;
-            title = '🏠 Anime Musim Ini';
+            title = '🏠 HOME';
+            subtitle = 'Anime Musim Ini';
     }
 
     const data = await fetchJikan(endpoint);
     if (!data) return;
-    renderAnimeGrid(data, title);
+
+    // Update active nav
+    navLinks.forEach(l => l.classList.remove('active'));
+    navLinks.forEach(l => {
+        if (l.dataset.page === page) l.classList.add('active');
+    });
+
+    if (page === 'schedule') {
+        renderSchedule(data, title, subtitle);
+    } else {
+        renderAnimeGrid(data, title, subtitle);
+    }
 }
+
+// ============================================================
+// SCHEDULE / JADWAL RILIS (Seperti di Otakudesu)
+// ============================================================
+
+function renderSchedule(data, title, subtitle) {
+    if (!data || !data.data) {
+        showError('Data tidak valid.');
+        return;
+    }
+
+    const list = data.data;
+    if (!list || list.length === 0) {
+        mainContent.innerHTML = `
+            <div class="section-title">${title} <span>${subtitle}</span></div>
+            <p style="color: var(--text-gray); text-align: center; padding: 40px 0;">Tidak ada jadwal rilis.</p>
+        `;
+        return;
+    }
+
+    let html = `<div class="section-title">${title} <span>${subtitle}</span></div>`;
+    html += `<div class="schedule-list">`;
+
+    const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+
+    list.slice(0, 20).forEach(anime => {
+        const titleText = anime.title || 'Tanpa Judul';
+        const date = anime.aired?.from ? new Date(anime.aired.from) : null;
+        const dayName = date ? days[date.getDay()] : 'TBA';
+        const dateStr = date ? date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : 'TBA';
+
+        html += `
+            <div class="schedule-item">
+                <span class="title">${titleText}</span>
+                <span>
+                    <span class="day">★ ${dayName}</span>
+                    <span class="date">${dateStr}</span>
+                </span>
+            </div>
+        `;
+    });
+
+    html += `</div>`;
+
+    // Widget "CEK ANIME ON-GOING LAINNYA" seperti di Otakudesu
+    html += `
+        <div style="margin-top:32px;border-top:1px solid var(--border);padding-top:24px;">
+            <h3 style="font-size:16px;margin-bottom:14px;color:var(--secondary);">🔥 CEK ANIME ON-GOING LAINNYA</h3>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                ${list.slice(0, 6).map(anime => `
+                    <button onclick="loadSearch('${anime.title}')" style="background:var(--bg-card);border:1px solid var(--border);color:var(--text-white);padding:8px 18px;border-radius:30px;cursor:pointer;font-size:13px;transition:all 0.3s;"
+                            onmouseover="this.style.background='rgba(108,43,217,0.2)'" onmouseout="this.style.background='var(--bg-card)'">
+                        ${anime.title.length > 25 ? anime.title.slice(0, 25) + '...' : anime.title}
+                    </button>
+                `).join('')}
+            </div>
+        </div>
+    `;
+
+    mainContent.innerHTML = html;
+}
+
+// ============================================================
+// GENRE LIST
+// ============================================================
+
+async function loadGenres() {
+    mainContent.innerHTML = `<div class="loading">Memuat genre...</div>`;
+
+    const data = await fetchJikan('/genres/anime');
+    if (!data || !data.data) {
+        showError('Gagal memuat genre.');
+        return;
+    }
+
+    navLinks.forEach(l => l.classList.remove('active'));
+    navLinks.forEach(l => {
+        if (l.dataset.page === 'genres') l.classList.add('active');
+    });
+
+    const genres = data.data.slice(0, 30);
+
+    let html = `<div class="section-title">🎭 GENRE LIST <span>Pilih genre untuk mencari anime</span></div>`;
+    html += `<div style="display:flex;flex-wrap:wrap;gap:10px;">`;
+
+    genres.forEach(genre => {
+        html += `
+            <button onclick="loadSearchByGenre('${genre.name}', ${genre.mal_id})" 
+                    style="background:var(--bg-card);border:1px solid var(--border);color:var(--text-white);padding:10px 22px;border-radius:30px;cursor:pointer;font-size:14px;font-weight:600;transition:all 0.3s;"
+                    onmouseover="this.style.background='rgba(108,43,217,0.2)'" onmouseout="this.style.background='var(--bg-card)'">
+                ${genre.name}
+            </button>
+        `;
+    });
+
+    html += `</div>`;
+    mainContent.innerHTML = html;
+}
+
+// ============================================================
+// SEARCH
+// ============================================================
 
 async function loadSearch(query) {
     if (!query.trim()) return;
-    currentQuery = query;
-    currentPage = 'search';
-
     mainContent.innerHTML = `<div class="loading">Mencari "${query}"...</div>`;
 
     const data = await fetchJikan(`/anime?q=${encodeURIComponent(query)}&sfw=true&limit=20`);
@@ -177,229 +280,209 @@ async function loadSearch(query) {
     renderAnimeGrid(data, `🔍 Hasil Pencarian: "${query}"`);
 }
 
-// ============================================
-// DETAIL ANIME + PLAYER STREAMING (FIXED)
-// ============================================
+async function loadSearchByGenre(genreName, genreId) {
+    mainContent.innerHTML = `<div class="loading">Mencari genre "${genreName}"...</div>`;
 
-async function openDetail(id) {
+    const data = await fetchJikan(`/anime?genres=${genreId}&sfw=true&limit=20`);
+    if (!data) return;
+
+    const results = data.data || [];
+    if (results.length === 0) {
+        mainContent.innerHTML = `
+            <div class="section-title">🎭 Genre: ${genreName}</div>
+            <p style="color: var(--text-gray); text-align: center; padding: 40px 0;">
+                Tidak ada anime dengan genre "${genreName}".
+            </p>
+        `;
+        return;
+    }
+
+    renderAnimeGrid(data, `🎭 Genre: ${genreName}`);
+}
+
+// ============================================================
+// DETAIL ANIME (Seperti Otakudesu)
+// ============================================================
+
+async function loadDetail(id) {
     if (!id) return;
 
-    modalBody.innerHTML = `<div class="loading">Memuat detail...</div>`;
-    modal.classList.add('show');
+    currentAnimeId = id;
+    mainContent.innerHTML = `<div class="loading">Memuat detail...</div>`;
 
     const data = await fetchJikan(`/anime/${id}`);
     if (!data || !data.data) {
-        modalBody.innerHTML = `<p style="color:var(--text-gray);">Gagal memuat detail anime.</p>`;
+        mainContent.innerHTML = `<p style="color:var(--text-gray);">Gagal memuat detail.</p>`;
         return;
     }
 
     const anime = data.data;
-    const image = anime.images?.jpg?.image_url || 'https://via.placeholder.com/720x320/1A1735/6C2BD9?text=No+Image';
+    currentAnimeTitle = anime.title || 'Tanpa Judul';
+
+    const image = anime.images?.jpg?.image_url || 'https://via.placeholder.com/720x320/1a1735/6c2bd9?text=No+Image';
     const title = anime.title || 'Tanpa Judul';
+    const titleJapanese = anime.title_japanese || '-';
     const score = anime.score || 'N/A';
     const genres = anime.genres?.map(g => g.name).join(', ') || '-';
     const status = anime.status || '-';
-    const episodes = anime.episodes || '-';
-    const synopsis = anime.synopsis || 'Sinopsis tidak tersedia.';
+    const episodes = anime.episodes || 12;
+    const duration = anime.duration || '-';
     const aired = anime.aired?.from ? new Date(anime.aired.from).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : 'TBA';
+    const studio = anime.studios?.map(s => s.name).join(', ') || '-';
+    const synopsis = anime.synopsis || 'Sinopsis tidak tersedia.';
 
-    currentAnimeTitle = title;
-    currentAnimeId = id;
+    const totalEp = Math.min(parseInt(episodes) || 12, 24);
 
     let html = `
-        <img class="detail-cover" src="${image}" alt="${title}" onerror="this.src='https://via.placeholder.com/720x320/1A1735/6C2BD9?text=Error'"/>
-        <h2 class="detail-title">${title}</h2>
-        <div class="detail-meta">
-            <span><strong>⭐ Rating:</strong> ${score}</span>
-            <span><strong>🎭 Genre:</strong> ${genres}</span>
-            <span><strong>📌 Status:</strong> ${status}</span>
-            <span><strong>📺 Episode:</strong> ${episodes}</span>
-            <span><strong>📅 Rilis:</strong> ${aired}</span>
-        </div>
-        <div class="detail-sinopsis">${synopsis}</div>
+        <div class="detail-page">
+            <button class="back-btn" onclick="goBack()">← Kembali</button>
 
-        <!-- ============ PLAYER STREAMING ============ -->
-        <div style="margin-top:24px;border-top:1px solid rgba(255,255,255,0.06);padding-top:20px;">
-            <h3 style="font-size:16px;margin-bottom:12px;">🎬 Putar Episode</h3>
-            
-            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
-                <select id="episodeSelect" style="flex:1;min-width:120px;background:var(--bg-card);color:var(--text-white);padding:10px 16px;border-radius:40px;border:1px solid rgba(255,255,255,0.08);font-weight:600;cursor:pointer;">
-                    ${Array.from({length: Math.min(12, parseInt(episodes) || 12)}, (_, i) => `
-                        <option value="${i+1}">Episode ${i+1}</option>
-                    `).join('')}
-                </select>
-                <button onclick="playStreaming()" style="background:var(--primary);color:white;padding:10px 24px;border-radius:40px;border:none;font-weight:700;cursor:pointer;">
-                    ▶ Nonton
-                </button>
+            <img class="detail-cover" src="${image}" alt="${title}" onerror="this.src='https://via.placeholder.com/720x320/1a1735/6c2bd9?text=Error'"/>
+
+            <h1 class="detail-title">${title}</h1>
+            <p style="color:var(--text-gray);font-size:14px;margin-bottom:8px;">${titleJapanese}</p>
+
+            <div class="detail-meta">
+                <span><strong>⭐ Skor:</strong> ${score}</span>
+                <span><strong>🎭 Genre:</strong> ${genres}</span>
+                <span><strong>📈 Status:</strong> ${status}</span>
+                <span><strong>📺 Total Episode:</strong> ${episodes}</span>
+                <span><strong>⏱ Durasi:</strong> ${duration}</span>
+                <span><strong>📅 Rilis:</strong> ${aired}</span>
+                <span><strong>🏢 Studio:</strong> ${studio}</span>
             </div>
 
-            <!-- Player Container -->
-            <div id="playerContainer" style="border-radius:12px;overflow:hidden;background:#000;aspect-ratio:16/9;display:none;position:relative;">
-                <iframe id="playerFrame" width="100%" height="100%" src="" frameborder="0" allowfullscreen style="position:absolute;top:0;left:0;width:100%;height:100%;"></iframe>
-                <div id="playerLoading" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:white;font-size:14px;display:none;">⏳ Memuat...</div>
-            </div>
+            <div class="detail-sinopsis">${synopsis}</div>
 
-            <!-- Sumber Streaming -->
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
-                <button onclick="setStreamSource('otakudesu')" class="source-btn active" style="padding:6px 16px;border-radius:40px;background:rgba(108,43,217,0.25);border:1px solid var(--primary);color:var(--text-white);font-size:12px;cursor:pointer;font-weight:600;">Otakudesu</button>
-                <button onclick="setStreamSource('anoboy')" class="source-btn" style="padding:6px 16px;border-radius:40px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);color:var(--text-gray);font-size:12px;cursor:pointer;font-weight:600;">Anoboy</button>
-                <button onclick="setStreamSource('samehadaku')" class="source-btn" style="padding:6px 16px;border-radius:40px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);color:var(--text-gray);font-size:12px;cursor:pointer;font-weight:600;">Samehadaku</button>
-                <button onclick="setStreamSource('kuramanime')" class="source-btn" style="padding:6px 16px;border-radius:40px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);color:var(--text-gray);font-size:12px;cursor:pointer;font-weight:600;">Kuramanime</button>
-                <button onclick="setStreamSource('google')" class="source-btn" style="padding:6px 16px;border-radius:40px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);color:var(--text-gray);font-size:12px;cursor:pointer;font-weight:600;">Google</button>
+            <div class="episode-section">
+                <h3>📺 Daftar Episode</h3>
+                <div class="episode-grid">
+    `;
+
+    for (let i = 1; i <= totalEp; i++) {
+        html += `
+            <button class="episode-btn" onclick="loadPlayer(${id}, ${i})">
+                Episode ${i}
+                <span class="eps-num">▶ Putar</span>
+            </button>
+        `;
+    }
+
+    html += `
+                </div>
             </div>
-            <p style="font-size:11px;color:var(--text-gray);margin-top:8px;">💡 Pilih sumber streaming, lalu klik Nonton</p>
         </div>
     `;
 
-    modalBody.innerHTML = html;
+    mainContent.innerHTML = html;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-// ============================================
-// STREAMING FUNCTIONS
-// ============================================
+// ============================================================
+// PLAYER STREAMING (Embed)
+// ============================================================
 
-let streamSource = 'otakudesu';
+function loadPlayer(animeId, episode) {
+    currentAnimeId = animeId;
+    currentEpisode = episode;
 
-function setStreamSource(source) {
-    streamSource = source;
-    document.querySelectorAll('.source-btn').forEach(btn => {
-        btn.style.background = 'rgba(255,255,255,0.04)';
-        btn.style.border = '1px solid rgba(255,255,255,0.06)';
-        btn.style.color = 'var(--text-gray)';
-    });
-    // Highlight yang dipilih
-    document.querySelectorAll('.source-btn').forEach(btn => {
-        if (btn.textContent.toLowerCase().includes(source)) {
-            btn.style.background = 'rgba(108,43,217,0.25)';
-            btn.style.border = '1px solid var(--primary)';
-            btn.style.color = 'var(--text-white)';
-        }
-    });
-}
-
-async function playStreaming() {
-    const episodeSelect = document.getElementById('episodeSelect');
-    const episode = episodeSelect ? episodeSelect.value : '1';
-    const title = currentAnimeTitle || 'anime';
-    
-    const playerContainer = document.getElementById('playerContainer');
-    const playerFrame = document.getElementById('playerFrame');
-    const playerLoading = document.getElementById('playerLoading');
-    
-    if (!playerContainer || !playerFrame) return;
-
-    // Tampilkan player dan loading
-    playerContainer.style.display = 'block';
-    if (playerLoading) playerLoading.style.display = 'block';
-    playerFrame.src = '';
-
-    // Coba dapatkan link dari consumet API terlebih dahulu
-    try {
-        // Cari ID episode di consumet (perlu search dulu)
-        const searchResult = await fetchConsumet(`/search?keyw=${encodeURIComponent(title)}`);
-        if (searchResult && searchResult.results && searchResult.results.length > 0) {
-            const animeId = searchResult.results[0].id;
-            // Ambil daftar episode
-            const episodesData = await fetchConsumet(`/info/${animeId}`);
-            if (episodesData && episodesData.episodes && episodesData.episodes.length > 0) {
-                // Cari episode berdasarkan nomor
-                const epData = episodesData.episodes.find(e => e.number == episode);
-                if (epData && epData.id) {
-                    const watchData = await fetchConsumet(`/watch/${epData.id}`);
-                    if (watchData && watchData.sources && watchData.sources.length > 0) {
-                        // Ambil source dengan kualitas terbaik
-                        const bestSource = watchData.sources.reduce((a, b) => {
-                            const qA = parseInt(a.quality) || 0;
-                            const qB = parseInt(b.quality) || 0;
-                            return qA > qB ? a : b;
-                        });
-                        if (bestSource && bestSource.url) {
-                            playerFrame.src = bestSource.url;
-                            if (playerLoading) playerLoading.style.display = 'none';
-                            playerContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            return;
-                        }
-                    }
-                }
-            }
-        }
-    } catch (err) {
-        console.warn('Consumet streaming failed:', err);
-    }
-
-    // FALLBACK: Gunakan embed iframe dari situs streaming
+    const title = currentAnimeTitle || 'Anime';
     const searchQuery = encodeURIComponent(`${title} episode ${episode} subtitle indonesia`);
-    let streamUrl = '';
 
-    switch(streamSource) {
+    let embedUrl = '';
+
+    switch (currentSource) {
         case 'otakudesu':
-            streamUrl = `https://otakudesu.cloud/?s=${searchQuery}`;
+            embedUrl = `https://otakudesu.cloud/?s=${searchQuery}`;
             break;
         case 'anoboy':
-            streamUrl = `https://anoboy.ch/?s=${searchQuery}`;
+            embedUrl = `https://anoboy.ch/?s=${searchQuery}`;
             break;
         case 'samehadaku':
-            streamUrl = `https://samehadaku.vip/?s=${searchQuery}`;
+            embedUrl = `https://samehadaku.vip/?s=${searchQuery}`;
             break;
         case 'kuramanime':
-            streamUrl = `https://kuramanime.net/?s=${searchQuery}`;
+            embedUrl = `https://kuramanime.net/?s=${searchQuery}`;
             break;
-        case 'google':
         default:
-            streamUrl = `https://www.google.com/search?q=${searchQuery}`;
+            embedUrl = `https://www.google.com/search?q=${searchQuery}`;
     }
 
-    // Load di iframe
-    playerFrame.src = streamUrl;
-    if (playerLoading) playerLoading.style.display = 'none';
-    playerContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    let html = `
+        <div class="player-page">
+            <button class="back-btn" onclick="loadDetail(${animeId})">← Kembali ke Detail</button>
+
+            <div class="player-container">
+                <iframe src="${embedUrl}" allowfullscreen></iframe>
+            </div>
+
+            <div class="player-info">
+                <h2>${title}</h2>
+                <span class="ep-label">Episode ${episode}</span>
+            </div>
+
+            <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
+                <button onclick="changeEpisode(-1)" style="background:rgba(255,255,255,0.06);border:1px solid var(--border);color:var(--text-white);padding:6px 18px;border-radius:30px;cursor:pointer;font-weight:600;">◀ Prev</button>
+                <button onclick="changeEpisode(1)" style="background:rgba(255,255,255,0.06);border:1px solid var(--border);color:var(--text-white);padding:6px 18px;border-radius:30px;cursor:pointer;font-weight:600;">Next ▶</button>
+            </div>
+
+            <div class="source-selector">
+                <button class="source-btn ${currentSource === 'otakudesu' ? 'active' : ''}" onclick="setSource('otakudesu')">Otakudesu</button>
+                <button class="source-btn ${currentSource === 'anoboy' ? 'active' : ''}" onclick="setSource('anoboy')">Anoboy</button>
+                <button class="source-btn ${currentSource === 'samehadaku' ? 'active' : ''}" onclick="setSource('samehadaku')">Samehadaku</button>
+                <button class="source-btn ${currentSource === 'kuramanime' ? 'active' : ''}" onclick="setSource('kuramanime')">Kuramanime</button>
+                <button class="source-btn ${currentSource === 'google' ? 'active' : ''}" onclick="setSource('google')">Google</button>
+            </div>
+            <p class="source-hint">💡 Pilih sumber streaming, lalu refresh player jika perlu.</p>
+        </div>
+    `;
+
+    mainContent.innerHTML = html;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-// ============================================
-// FUNGSI COPY TITLE
-// ============================================
+// ============================================================
+// FUNGSI BANTU
+// ============================================================
 
-function copyTitle(title) {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(title).then(() => {
-            alert(`✅ Judul "${title}" berhasil disalin!`);
-        }).catch(() => fallbackCopy(title));
+function setSource(source) {
+    currentSource = source;
+    if (currentAnimeId && currentEpisode) {
+        loadPlayer(currentAnimeId, currentEpisode);
     } else {
-        fallbackCopy(title);
+        // Update tampilan source saja
+        document.querySelectorAll('.source-btn').forEach(btn => {
+            btn.classList.remove('active');
+            if (btn.textContent.toLowerCase().includes(source)) {
+                btn.classList.add('active');
+            }
+        });
     }
 }
 
-function fallbackCopy(text) {
-    const textarea = document.createElement('textarea');
-    textarea.value = text;
-    textarea.style.position = 'fixed';
-    textarea.style.opacity = '0';
-    document.body.appendChild(textarea);
-    textarea.select();
-    try {
-        document.execCommand('copy');
-        alert(`✅ Judul "${text}" berhasil disalin!`);
-    } catch (err) {
-        alert(`❌ Gagal menyalin. Silakan salin manual: ${text}`);
+function changeEpisode(delta) {
+    const newEp = currentEpisode + delta;
+    if (newEp < 1) return;
+    if (currentAnimeId) {
+        loadPlayer(currentAnimeId, newEp);
     }
-    document.body.removeChild(textarea);
 }
 
-// ============================================
+function goBack() {
+    if (currentAnimeId) {
+        loadDetail(currentAnimeId);
+    } else {
+        loadPage('home');
+    }
+}
+
+function goHome() {
+    loadPage('home');
+}
+
+// ============================================================
 // EVENT LISTENERS
-// ============================================
-
-navLinks.forEach(link => {
-    link.addEventListener('click', (e) => {
-        e.preventDefault();
-        const page = link.dataset.page;
-        if (page) {
-            loadPage(page);
-            navLinks.forEach(l => l.classList.remove('active'));
-            link.classList.add('active');
-        }
-    });
-});
+// ============================================================
 
 searchBtn.addEventListener('click', () => {
     const query = searchInput.value.trim();
@@ -410,24 +493,8 @@ searchInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') searchBtn.click();
 });
 
-modalClose.addEventListener('click', () => {
-    modal.classList.remove('show');
-    // Hentikan player
-    const frame = document.getElementById('playerFrame');
-    if (frame) frame.src = '';
-});
-
-modal.addEventListener('click', (e) => {
-    if (e.target === modal) {
-        modal.classList.remove('show');
-        const frame = document.getElementById('playerFrame');
-        if (frame) frame.src = '';
-    }
-});
-
-// ============================================
+// ============================================================
 // INIT
-// ============================================
+// ============================================================
 
-document.querySelector('nav a[data-page="home"]')?.classList.add('active');
 loadPage('home');
