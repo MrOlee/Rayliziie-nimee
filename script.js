@@ -1,10 +1,17 @@
 // ============================================
-// RAYLIZIIE NIME - Main JavaScript (FIXED)
+// RAYLIZIIE NIME - Main JavaScript (FIXED v2)
 // ============================================
 
-// Gunakan base URL yang benar dari repository
-// API: https://github.com/rakarmp/unofficial-otakudesu-api
-const API_BASE = 'https://unofficial-otakudesu-api.vercel.app/api';
+// Daftar base URL yang mungkin (fallback)
+const API_BASES = [
+    'https://unofficial-otakudesu-api.vercel.app/api',
+    'https://unofficial-otakudesu-api.vercel.app',
+    'https://otakudesu-api.vercel.app/api',
+    'https://otakudesu-api.vercel.app'
+];
+
+let currentBaseIndex = 0;
+let currentBaseUrl = API_BASES[0];
 
 // State
 let currentPage = 'home';
@@ -21,27 +28,44 @@ const modalClose = document.getElementById('modalClose');
 const navLinks = document.querySelectorAll('nav a');
 
 // ============================================
-// API CALLS DENGAN ERROR HANDLING
+// API CALLS DENGAN FALLBACK
 // ============================================
 
 async function fetchAPI(endpoint) {
-    try {
-        const url = `${API_BASE}${endpoint}`;
-        console.log('🔍 Fetching:', url);
-        
-        const res = await fetch(url);
-        if (!res.ok) {
-            throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    let lastError = null;
+
+    // Coba semua base URL
+    for (let i = 0; i < API_BASES.length; i++) {
+        const base = API_BASES[i];
+        const url = `${base}${endpoint}`;
+        console.log(`🔍 [Attempt ${i+1}] Fetching:`, url);
+
+        try {
+            const res = await fetch(url, {
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+            }
+
+            const data = await res.json();
+            console.log(`✅ [Attempt ${i+1}] Success!`);
+            currentBaseUrl = base; // Simpan base yang berhasil
+            return data;
+        } catch (err) {
+            console.warn(`❌ [Attempt ${i+1}] Failed:`, err.message);
+            lastError = err;
+            // Lanjut ke base URL berikutnya
         }
-        const data = await res.json();
-        console.log('✅ Data received:', data);
-        return data;
-    } catch (err) {
-        console.error('❌ API Error:', err.message);
-        // Tampilkan error di UI
-        showError(`Gagal memuat data: ${err.message}`);
-        return null;
     }
+
+    // Semua gagal
+    showError(`Gagal memuat data: ${lastError ? lastError.message : 'Unknown error'}`);
+    return null;
 }
 
 function showError(msg) {
@@ -56,17 +80,15 @@ function showError(msg) {
 }
 
 // ============================================
-// RENDER FUNCTIONS (dengan validasi data)
+// RENDER FUNCTIONS (sama seperti sebelumnya)
 // ============================================
 
 function renderAnimeGrid(data, title = 'Anime') {
-    // Validasi data
     if (!data) {
         showError('Data tidak valid dari server.');
         return;
     }
 
-    // Cek struktur data (mungkin berbeda)
     let animeList = data.anime_list || data.data || data.results || [];
     if (!Array.isArray(animeList) || animeList.length === 0) {
         mainContent.innerHTML = `
@@ -82,7 +104,6 @@ function renderAnimeGrid(data, title = 'Anime') {
     html += `<div class="anime-grid">`;
 
     animeList.forEach(anime => {
-        // Ambil properti dengan fallback
         const id = anime.id || anime.slug || anime.anime_id || '';
         const titleText = anime.title || anime.judul || 'Tanpa Judul';
         const image = anime.thumbnail || anime.image || anime.cover || 'https://via.placeholder.com/300x450/1A1735/6C2BD9?text=No+Image';
@@ -108,14 +129,13 @@ function renderAnimeGrid(data, title = 'Anime') {
 }
 
 // ============================================
-// LOAD FUNCTIONS (dengan endpoint yang benar)
+// LOAD FUNCTIONS
 // ============================================
 
 async function loadPage(page = 'home', pageNum = 1) {
     currentPage = page;
     currentPageNum = pageNum;
 
-    // Tampilkan loading
     mainContent.innerHTML = `<div class="loading">Memuat data...</div>`;
 
     let endpoint = '';
@@ -138,21 +158,14 @@ async function loadPage(page = 'home', pageNum = 1) {
             endpoint = '/schedule';
             title = '📅 Jadwal Rilis Anime';
             break;
-        case 'search':
-            // Search handled separately
-            return;
         default:
             endpoint = '/home';
             title = '🏠 Beranda';
     }
 
     const data = await fetchAPI(endpoint);
-    if (!data) {
-        // Error sudah ditangani di fetchAPI
-        return;
-    }
+    if (!data) return;
 
-    // Jika endpoint adalah schedule, tampilkan berbeda
     if (page === 'schedule') {
         renderSchedule(data);
         return;
@@ -171,7 +184,6 @@ async function loadSearch(query) {
     const data = await fetchAPI(`/search/${encodeURIComponent(query)}`);
     if (!data) return;
 
-    // Cek apakah data memiliki hasil
     const results = data.anime_list || data.data || data.results || [];
     if (results.length === 0) {
         mainContent.innerHTML = `
@@ -270,7 +282,6 @@ navLinks.forEach(link => {
         const page = link.dataset.page;
         if (page) {
             loadPage(page);
-            // Update active class
             navLinks.forEach(l => l.classList.remove('active'));
             link.classList.add('active');
         }
@@ -279,15 +290,11 @@ navLinks.forEach(link => {
 
 searchBtn.addEventListener('click', () => {
     const query = searchInput.value.trim();
-    if (query) {
-        loadSearch(query);
-    }
+    if (query) loadSearch(query);
 });
 
 searchInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-        searchBtn.click();
-    }
+    if (e.key === 'Enter') searchBtn.click();
 });
 
 modalClose.addEventListener('click', () => {
@@ -295,15 +302,12 @@ modalClose.addEventListener('click', () => {
 });
 
 modal.addEventListener('click', (e) => {
-    if (e.target === modal) {
-        modal.classList.remove('show');
-    }
+    if (e.target === modal) modal.classList.remove('show');
 });
 
 // ============================================
-// INIT - Load Home
+// INIT
 // ============================================
 
-// Set active home
 document.querySelector('nav a[data-page="home"]')?.classList.add('active');
 loadPage('home');
