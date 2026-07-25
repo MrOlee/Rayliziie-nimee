@@ -1,17 +1,9 @@
 // ============================================
-// RAYLIZIIE NIME - Main JavaScript (FIXED v2)
+// RAYLIZIIE NIME - Main JavaScript (Jikan API)
+// API: https://api.jikan.moe/v4
 // ============================================
 
-// Daftar base URL yang mungkin (fallback)
-const API_BASES = [
-    'https://unofficial-otakudesu-api.vercel.app/api',
-    'https://unofficial-otakudesu-api.vercel.app',
-    'https://otakudesu-api.vercel.app/api',
-    'https://otakudesu-api.vercel.app'
-];
-
-let currentBaseIndex = 0;
-let currentBaseUrl = API_BASES[0];
+const API_BASE = 'https://api.jikan.moe/v4';
 
 // State
 let currentPage = 'home';
@@ -28,44 +20,26 @@ const modalClose = document.getElementById('modalClose');
 const navLinks = document.querySelectorAll('nav a');
 
 // ============================================
-// API CALLS DENGAN FALLBACK
+// API CALLS
 // ============================================
 
-async function fetchAPI(endpoint) {
-    let lastError = null;
-
-    // Coba semua base URL
-    for (let i = 0; i < API_BASES.length; i++) {
-        const base = API_BASES[i];
-        const url = `${base}${endpoint}`;
-        console.log(`🔍 [Attempt ${i+1}] Fetching:`, url);
-
-        try {
-            const res = await fetch(url, {
-                headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            if (!res.ok) {
-                throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-            }
-
-            const data = await res.json();
-            console.log(`✅ [Attempt ${i+1}] Success!`);
-            currentBaseUrl = base; // Simpan base yang berhasil
-            return data;
-        } catch (err) {
-            console.warn(`❌ [Attempt ${i+1}] Failed:`, err.message);
-            lastError = err;
-            // Lanjut ke base URL berikutnya
+async function fetchJikan(endpoint) {
+    try {
+        const url = `${API_BASE}${endpoint}`;
+        console.log('🔍 Fetching:', url);
+        
+        const res = await fetch(url);
+        if (!res.ok) {
+            throw new Error(`HTTP ${res.status}: ${res.statusText}`);
         }
+        const data = await res.json();
+        console.log('✅ Data received:', data);
+        return data;
+    } catch (err) {
+        console.error('❌ API Error:', err.message);
+        showError(`Gagal memuat data: ${err.message}`);
+        return null;
     }
-
-    // Semua gagal
-    showError(`Gagal memuat data: ${lastError ? lastError.message : 'Unknown error'}`);
-    return null;
 }
 
 function showError(msg) {
@@ -80,16 +54,16 @@ function showError(msg) {
 }
 
 // ============================================
-// RENDER FUNCTIONS (sama seperti sebelumnya)
+// RENDER FUNCTIONS
 // ============================================
 
 function renderAnimeGrid(data, title = 'Anime') {
-    if (!data) {
+    if (!data || !data.data) {
         showError('Data tidak valid dari server.');
         return;
     }
 
-    let animeList = data.anime_list || data.data || data.results || [];
+    const animeList = data.data;
     if (!Array.isArray(animeList) || animeList.length === 0) {
         mainContent.innerHTML = `
             <div class="section-title">${title}</div>
@@ -104,14 +78,18 @@ function renderAnimeGrid(data, title = 'Anime') {
     html += `<div class="anime-grid">`;
 
     animeList.forEach(anime => {
-        const id = anime.id || anime.slug || anime.anime_id || '';
-        const titleText = anime.title || anime.judul || 'Tanpa Judul';
-        const image = anime.thumbnail || anime.image || anime.cover || 'https://via.placeholder.com/300x450/1A1735/6C2BD9?text=No+Image';
-        const episode = anime.episode || anime.latest_episode || anime.total_episode || '-';
-        const type = anime.type || anime.genre || 'TV';
+        const id = anime.mal_id || '';
+        const titleText = anime.title || 'Tanpa Judul';
+        const image = anime.images?.jpg?.image_url || anime.images?.webp?.image_url || 'https://via.placeholder.com/300x450/1A1735/6C2BD9?text=No+Image';
+        const episode = anime.episodes || '-';
+        const type = anime.type || 'TV';
+        const rating = anime.rating || 'N/A';
+        const synopsis = anime.synopsis || 'Sinopsis tidak tersedia.';
+        const genres = anime.genres?.map(g => g.name).join(', ') || '-';
+        const status = anime.status || '-';
 
         html += `
-            <div class="anime-card" data-id="${id}" onclick="openDetail('${id}')">
+            <div class="anime-card" data-id="${id}" onclick="openDetail(${id})">
                 <img src="${image}" alt="${titleText}" loading="lazy" onerror="this.src='https://via.placeholder.com/300x450/1A1735/6C2BD9?text=Error'"/>
                 <div class="info">
                     <h3>${titleText}</h3>
@@ -143,29 +121,32 @@ async function loadPage(page = 'home', pageNum = 1) {
 
     switch (page) {
         case 'home':
-            endpoint = '/home';
-            title = '🏠 Beranda';
+            endpoint = `/seasons/now?page=${pageNum}&limit=20`;
+            title = '🏠 Anime Musim Ini';
             break;
         case 'ongoing':
-            endpoint = '/ongoing';
+            endpoint = `/seasons/now?page=${pageNum}&limit=20`;
             title = '🔥 Ongoing Anime';
             break;
         case 'complete':
-            endpoint = `/complete/page/${pageNum}`;
+            // Untuk completed, kita ambil dari top anime dengan filter completed
+            endpoint = `/top/anime?page=${pageNum}&limit=20&filter=airing`;
             title = '✅ Completed Anime';
             break;
         case 'schedule':
-            endpoint = '/schedule';
+            // Jikan tidak punya endpoint schedule langsung, kita pakai top upcoming
+            endpoint = `/seasons/upcoming?page=${pageNum}&limit=20`;
             title = '📅 Jadwal Rilis Anime';
             break;
         default:
-            endpoint = '/home';
-            title = '🏠 Beranda';
+            endpoint = `/seasons/now?page=${pageNum}&limit=20`;
+            title = '🏠 Anime Musim Ini';
     }
 
-    const data = await fetchAPI(endpoint);
+    const data = await fetchJikan(endpoint);
     if (!data) return;
 
+    // Jika page = schedule, kita tampilkan sebagai jadwal
     if (page === 'schedule') {
         renderSchedule(data);
         return;
@@ -181,10 +162,10 @@ async function loadSearch(query) {
 
     mainContent.innerHTML = `<div class="loading">Mencari "${query}"...</div>`;
 
-    const data = await fetchAPI(`/search/${encodeURIComponent(query)}`);
+    const data = await fetchJikan(`/anime?q=${encodeURIComponent(query)}&sfw=true&limit=20`);
     if (!data) return;
 
-    const results = data.anime_list || data.data || data.results || [];
+    const results = data.data || [];
     if (results.length === 0) {
         mainContent.innerHTML = `
             <div class="section-title">🔍 Hasil Pencarian: "${query}"</div>
@@ -199,7 +180,7 @@ async function loadSearch(query) {
 }
 
 function renderSchedule(data) {
-    if (!data || !data.schedule) {
+    if (!data || !data.data || data.data.length === 0) {
         mainContent.innerHTML = `<p style="color:var(--text-gray);">Tidak ada jadwal.</p>`;
         return;
     }
@@ -207,14 +188,13 @@ function renderSchedule(data) {
     let html = `<div class="section-title">📅 Jadwal Rilis Anime</div>`;
     html += `<div style="display:flex;flex-direction:column;gap:12px;">`;
 
-    const scheduleList = data.schedule || [];
-    scheduleList.forEach(item => {
-        const title = item.title || item.anime_title || 'Anime';
-        const time = item.time || item.day || 'TBA';
+    data.data.forEach(anime => {
+        const title = anime.title || 'Anime';
+        const date = anime.aired?.from ? new Date(anime.aired.from).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : 'TBA';
         html += `
             <div style="background:var(--bg-card);padding:14px 20px;border-radius:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;border:1px solid rgba(255,255,255,0.04);">
                 <span style="font-weight:600;">${title}</span>
-                <span style="color:var(--secondary);font-weight:600;font-size:14px;">${time}</span>
+                <span style="color:var(--secondary);font-weight:600;font-size:14px;">${date}</span>
             </div>
         `;
     });
@@ -233,40 +213,43 @@ async function openDetail(id) {
     modalBody.innerHTML = `<div class="loading">Memuat detail...</div>`;
     modal.classList.add('show');
 
-    const data = await fetchAPI(`/anime/${id}`);
-    if (!data) {
+    const data = await fetchJikan(`/anime/${id}`);
+    if (!data || !data.data) {
         modalBody.innerHTML = `<p style="color:var(--text-gray);">Gagal memuat detail anime.</p>`;
         return;
     }
 
-    const anime = data.anime || data;
-    const image = anime.thumbnail || anime.image || 'https://via.placeholder.com/720x320/1A1735/6C2BD9?text=No+Image';
+    const anime = data.data;
+    const image = anime.images?.jpg?.image_url || anime.images?.webp?.image_url || 'https://via.placeholder.com/720x320/1A1735/6C2BD9?text=No+Image';
+    const title = anime.title || 'Tanpa Judul';
+    const rating = anime.rating || 'N/A';
+    const genres = anime.genres?.map(g => g.name).join(', ') || '-';
+    const status = anime.status || '-';
+    const episodes = anime.episodes || '-';
+    const synopsis = anime.synopsis || 'Sinopsis tidak tersedia.';
+    const score = anime.score || 'N/A';
+    const aired = anime.aired?.from ? new Date(anime.aired.from).toLocaleDateString('id-ID') : 'TBA';
 
     let html = `
-        <img class="detail-cover" src="${image}" alt="${anime.title}" onerror="this.src='https://via.placeholder.com/720x320/1A1735/6C2BD9?text=Error'"/>
-        <h2 class="detail-title">${anime.title || 'Tanpa Judul'}</h2>
+        <img class="detail-cover" src="${image}" alt="${title}" onerror="this.src='https://via.placeholder.com/720x320/1A1735/6C2BD9?text=Error'"/>
+        <h2 class="detail-title">${title}</h2>
         <div class="detail-meta">
-            <span><strong>Rating:</strong> ${anime.rating || 'N/A'}</span>
-            <span><strong>Genre:</strong> ${anime.genres || '-'}</span>
-            <span><strong>Status:</strong> ${anime.status || '-'}</span>
-            <span><strong>Episode:</strong> ${anime.episode || anime.total_episode || '-'}</span>
+            <span><strong>Rating:</strong> ${score}</span>
+            <span><strong>Genre:</strong> ${genres}</span>
+            <span><strong>Status:</strong> ${status}</span>
+            <span><strong>Episode:</strong> ${episodes}</span>
+            <span><strong>Rilis:</strong> ${aired}</span>
         </div>
-        <div class="detail-sinopsis">${anime.synopsis || anime.sinopsis || 'Sinopsis tidak tersedia.'}</div>
+        <div class="detail-sinopsis">${synopsis}</div>
     `;
 
-    if (anime.episode_list && anime.episode_list.length > 0) {
-        html += `<h3 style="margin:20px 0 12px;font-size:18px;">📺 Daftar Episode</h3>`;
-        html += `<div class="detail-episodes">`;
-        anime.episode_list.forEach(ep => {
-            const epNum = ep.episode || ep.number || '-';
-            html += `
-                <a href="#" onclick="event.preventDefault();alert('Streaming episode ${epNum} akan segera hadir.');">
-                    <span>Episode ${epNum}</span>
-                    <span class="eps-num">▶ Play</span>
-                </a>
-            `;
-        });
-        html += `</div>`;
+    // Tampilkan trailer jika ada
+    if (anime.trailer?.url) {
+        html += `
+            <div style="margin-top:16px;">
+                <a href="${anime.trailer.url}" target="_blank" style="display:inline-block;background:var(--primary);color:white;padding:10px 24px;border-radius:40px;text-decoration:none;font-weight:700;">▶ Tonton Trailer</a>
+            </div>
+        `;
     }
 
     modalBody.innerHTML = html;
