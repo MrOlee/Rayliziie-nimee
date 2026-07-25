@@ -1,6 +1,6 @@
 // ============================================================
 // RAYLIZIIE NIME - Main JavaScript
-// API: Jikan + Consumet (untuk link streaming)
+// API: Jikan + Consumet (video streaming)
 // ============================================================
 
 const JIKAN_API = 'https://api.jikan.moe/v4';
@@ -13,6 +13,8 @@ let currentAnimeId = null;
 let currentAnimeTitle = '';
 let currentEpisode = 1;
 let currentEpisodeId = '';
+let currentSources = [];
+let currentQuality = 'default';
 let currentSource = 'gogoanime';
 
 // DOM
@@ -312,29 +314,43 @@ async function loadDetail(id) {
 }
 
 // ============================================================
-// PLAYER STREAMING - VIDEO LANGSUNG (Embed)
+// PLAYER - VIDEO LANGSUNG (HTML5)
 // ============================================================
 
 async function loadPlayer(animeId, episode) {
     currentAnimeId = animeId;
     currentEpisode = episode;
+    currentSources = [];
 
+    // Tampilkan player page dulu
     mainContent.innerHTML = `
         <div class="player-page">
             <button class="back-btn" onclick="loadDetail(${animeId})">← Kembali ke Detail</button>
             <div class="player-container">
-                <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-gray);font-size:16px;">
-                    ⏳ Mencari link streaming...
+                <div class="loading-overlay" id="playerLoading">
+                    ⏳ Mencari link video...
                 </div>
+                <video id="videoPlayer" controls style="width:100%;height:100%;display:none;">
+                    <source id="videoSource" src="">
+                    Browser tidak mendukung video tag.
+                </video>
             </div>
+
+            <!-- Quality Selector -->
+            <div class="quality-selector" id="qualitySelector">
+                <button class="quality-btn active" data-quality="default" onclick="setQuality('default')">Auto</button>
+            </div>
+
             <div class="player-info">
                 <h2>${currentAnimeTitle}</h2>
                 <span class="ep-label">Episode ${episode}</span>
             </div>
-            <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
-                <button onclick="changeEpisode(-1)" style="background:rgba(255,255,255,0.06);border:1px solid var(--border);color:var(--text-white);padding:6px 18px;border-radius:30px;cursor:pointer;font-weight:600;">◀ Prev</button>
-                <button onclick="changeEpisode(1)" style="background:rgba(255,255,255,0.06);border:1px solid var(--border);color:var(--text-white);padding:6px 18px;border-radius:30px;cursor:pointer;font-weight:600;">Next ▶</button>
+
+            <div class="nav-buttons">
+                <button onclick="changeEpisode(-1)">◀ Prev</button>
+                <button onclick="changeEpisode(1)">Next ▶</button>
             </div>
+
             <div class="source-selector">
                 <button class="source-btn active" onclick="setSource('gogoanime')">Gogoanime</button>
                 <button class="source-btn" onclick="setSource('zoro')">Zoro</button>
@@ -347,43 +363,47 @@ async function loadPlayer(animeId, episode) {
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
-    // Cari link streaming
-    await fetchAndPlay(animeId, episode);
+    // Mulai fetch video
+    await fetchAndPlayVideo(animeId, episode);
 }
 
 // ============================================================
-// FETCH & PLAY VIDEO
+// FETCH VIDEO DARI CONSUMET
 // ============================================================
 
-async function fetchAndPlay(animeId, episode) {
-    const playerContainer = document.querySelector('.player-container');
-    if (!playerContainer) return;
+async function fetchAndPlayVideo(animeId, episode) {
+    const loading = document.getElementById('playerLoading');
+    const video = document.getElementById('videoPlayer');
+    const source = document.getElementById('videoSource');
+    const qualityContainer = document.getElementById('qualitySelector');
 
-    // Tampilkan loading
-    playerContainer.innerHTML = `
-        <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-gray);font-size:16px;">
-            ⏳ Mencari link streaming...
-        </div>
-    `;
+    if (!loading || !video || !source) return;
 
-    let videoUrl = null;
+    loading.classList.remove('hidden');
+    video.style.display = 'none';
+    video.pause();
+
+    let videoSources = [];
 
     try {
-        // 1. Coba cari di Gogoanime via consumet
+        // Cari di Gogoanime via consumet
         const searchResult = await fetchConsumet(`/search?keyw=${encodeURIComponent(currentAnimeTitle)}`);
         if (searchResult && searchResult.results && searchResult.results.length > 0) {
             const gogoId = searchResult.results[0].id;
             const info = await fetchConsumet(`/info/${gogoId}`);
             if (info && info.episodes) {
-                // Cari episode berdasarkan nomor
                 const epData = info.episodes.find(e => e.number == episode);
                 if (epData && epData.id) {
                     currentEpisodeId = epData.id;
                     const watch = await fetchConsumet(`/watch/${epData.id}`);
                     if (watch && watch.sources && watch.sources.length > 0) {
-                        // Ambil kualitas terbaik
-                        const sorted = watch.sources.sort((a, b) => (parseInt(b.quality) || 0) - (parseInt(a.quality) || 0));
-                        videoUrl = sorted[0]?.url;
+                        // Simpan semua sources
+                        videoSources = watch.sources.map(s => ({
+                            url: s.url,
+                            quality: s.quality || 'default',
+                            isM3U8: s.url && s.url.includes('.m3u8')
+                        }));
+                        currentSources = videoSources;
                     }
                 }
             }
@@ -392,49 +412,99 @@ async function fetchAndPlay(animeId, episode) {
         console.warn('Gogoanime failed:', err);
     }
 
-    // 2. Fallback: embed dari Zoro / Otakudesu
-    if (!videoUrl) {
+    // Jika tidak ada, fallback ke embed
+    if (videoSources.length === 0) {
         const title = encodeURIComponent(currentAnimeTitle);
         const ep = episode;
+        let fallbackUrl = '';
         switch (currentSource) {
             case 'zoro':
-                videoUrl = `https://zoro.to/embed?keyword=${title}+episode+${ep}`;
+                fallbackUrl = `https://zoro.to/embed?keyword=${title}+episode+${ep}`;
                 break;
             case 'otakudesu':
-                videoUrl = `https://otakudesu.cloud/?s=${title}+episode+${ep}`;
+                fallbackUrl = `https://otakudesu.cloud/?s=${title}+episode+${ep}`;
                 break;
             case 'google':
-                videoUrl = `https://www.google.com/search?q=${title}+episode+${ep}+subtitle+indonesia`;
+                fallbackUrl = `https://www.google.com/search?q=${title}+episode+${ep}+subtitle+indonesia`;
                 break;
             default:
-                videoUrl = `https://gogoanime.llc/${currentAnimeTitle}-episode-${ep}`;
+                fallbackUrl = `https://gogoanime.llc/${currentAnimeTitle.replace(/ /g, '-').toLowerCase()}-episode-${ep}`;
         }
+        // Tampilkan iframe (bukan video)
+        loading.classList.add('hidden');
+        video.style.display = 'none';
+        const container = document.querySelector('.player-container');
+        if (container) {
+            container.innerHTML = `
+                <iframe src="${fallbackUrl}" allowfullscreen style="width:100%;height:100%;border:none;"></iframe>
+            `;
+        }
+        return;
     }
 
-    // 3. Tampilkan video
-    if (videoUrl) {
-        // Jika URL mengandung .mp4, .m3u8, atau embed player, gunakan video/iframe
-        if (videoUrl.includes('.mp4') || videoUrl.includes('.m3u8')) {
-            playerContainer.innerHTML = `
-                <video controls autoplay style="width:100%;height:100%;background:#000;">
-                    <source src="${videoUrl}" type="video/mp4">
-                    Browser tidak mendukung video tag.
-                </video>
-            `;
-        } else {
-            // Gunakan iframe untuk embed player
-            playerContainer.innerHTML = `
-                <iframe src="${videoUrl}" allowfullscreen style="width:100%;height:100%;border:none;"></iframe>
-            `;
+    // Tampilkan video player dengan kualitas
+    loading.classList.add('hidden');
+    video.style.display = 'block';
+
+    // Siapkan quality buttons
+    let qualityHTML = `<button class="quality-btn active" data-quality="default" onclick="setQuality('default')">Auto</button>`;
+    const uniqueQualities = [...new Set(videoSources.map(s => s.quality))];
+    uniqueQualities.forEach(q => {
+        if (q && q !== 'default') {
+            qualityHTML += `<button class="quality-btn" data-quality="${q}" onclick="setQuality('${q}')">${q}</button>`;
         }
-    } else {
-        playerContainer.innerHTML = `
-            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text-gray);padding:20px;text-align:center;">
-                <p style="font-size:16px;font-weight:600;color:var(--text-white);">⚠️ Link streaming tidak ditemukan</p>
-                <p style="font-size:13px;margin-top:6px;">Coba ganti sumber streaming di bawah.</p>
-                <button onclick="fetchAndPlay(${currentAnimeId}, ${currentEpisode})" style="margin-top:12px;background:var(--primary);border:none;color:white;padding:6px 20px;border-radius:30px;cursor:pointer;font-weight:600;">🔄 Coba Lagi</button>
-            </div>
-        `;
+    });
+    qualityContainer.innerHTML = qualityHTML;
+
+    // Pilih kualitas default: ambil yang terbaik (angka tertinggi)
+    let selected = videoSources.reduce((a, b) => {
+        const qA = parseInt(a.quality) || 0;
+        const qB = parseInt(b.quality) || 0;
+        return qA > qB ? a : b;
+    });
+    if (!selected) selected = videoSources[0];
+
+    // Set video source
+    if (selected.url) {
+        source.src = selected.url;
+        video.load();
+        video.play().catch(() => console.warn('Autoplay blocked'));
+    }
+}
+
+// ============================================================
+// SET QUALITY
+// ============================================================
+
+function setQuality(quality) {
+    // Highlight tombol
+    document.querySelectorAll('.quality-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.dataset.quality === quality) {
+            btn.classList.add('active');
+        }
+    });
+
+    // Cari source dengan quality yang sesuai
+    let selected = currentSources.find(s => s.quality == quality);
+    if (!selected && quality === 'default') {
+        // Cari kualitas terbaik
+        selected = currentSources.reduce((a, b) => {
+            const qA = parseInt(a.quality) || 0;
+            const qB = parseInt(b.quality) || 0;
+            return qA > qB ? a : b;
+        });
+    }
+    if (!selected) selected = currentSources[0];
+
+    if (selected && selected.url) {
+        const video = document.getElementById('videoPlayer');
+        const source = document.getElementById('videoSource');
+        if (video && source) {
+            source.src = selected.url;
+            video.load();
+            video.play().catch(() => console.warn('Autoplay blocked'));
+        }
     }
 }
 
@@ -450,9 +520,8 @@ function setSource(source) {
             btn.classList.add('active');
         }
     });
-    // Refresh player dengan source baru
     if (currentAnimeId && currentEpisode) {
-        fetchAndPlay(currentAnimeId, currentEpisode);
+        fetchAndPlayVideo(currentAnimeId, currentEpisode);
     }
 }
 
