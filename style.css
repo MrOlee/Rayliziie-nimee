@@ -340,12 +340,61 @@ body {
     position: relative;
 }
 
-.player-container iframe,
 .player-container video {
     width: 100%;
     height: 100%;
-    border: none;
     display: block;
+    background: #000;
+}
+
+.player-container .loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.7);
+    color: var(--text-gray);
+    font-size: 16px;
+    z-index: 2;
+}
+
+.player-container .loading-overlay.hidden {
+    display: none;
+}
+
+/* Quality selector */
+.quality-selector {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 12px 0;
+}
+
+.quality-btn {
+    padding: 6px 16px;
+    border-radius: 30px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+    color: var(--text-gray);
+    font-size: 12px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.3s;
+}
+
+.quality-btn:hover {
+    background: rgba(108, 43, 217, 0.15);
+    color: var(--text-white);
+}
+
+.quality-btn.active {
+    background: rgba(108, 43, 217, 0.25);
+    border-color: var(--primary);
+    color: var(--text-white);
 }
 
 .player-info {
@@ -370,7 +419,28 @@ body {
     font-weight: 600;
 }
 
-/* SOURCE SELECTOR */
+.nav-buttons {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+}
+
+.nav-buttons button {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border);
+    color: var(--text-white);
+    padding: 6px 18px;
+    border-radius: 30px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.3s;
+}
+
+.nav-buttons button:hover {
+    background: rgba(108, 43, 217, 0.2);
+}
+
 .source-selector {
     display: flex;
     gap: 6px;
@@ -407,7 +477,6 @@ body {
     margin-top: 6px;
 }
 
-/* BACK BUTTON */
 .back-btn {
     display: inline-flex;
     align-items: center;
@@ -461,7 +530,6 @@ body {
     font-size: 12px;
 }
 
-/* GENRE */
 .genre-grid {
     display: flex;
     flex-wrap: wrap;
@@ -485,7 +553,6 @@ body {
     border-color: var(--primary);
 }
 
-/* FOOTER */
 .footer {
     border-top: 1px solid var(--border);
     padding: 18px 0;
@@ -494,19 +561,11 @@ body {
     font-size: 12px;
 }
 
-/* ANIMATION */
 @keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
-/* RESPONSIVE */
 @media (max-width: 768px) {
     .header .container {
         flex-direction: column;
