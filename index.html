@@ -1,44 +1,49 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Rayliziie Nime - Streaming Anime</title>
-    <link rel="stylesheet" href="style.css" />
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rayliziie Nime - Streaming Anime Sub Indo</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- Header -->
+  <header>
+    <a href="/" class="logo">Rayliziie Nime</a>
+    <input type="text" class="search-box" placeholder="Cari judul anime...">
+  </header>
 
-<header class="header">
-    <div class="container">
-        <div class="logo" onclick="goHome()">🎬 Rayliziie<span>Nime</span></div>
-        <nav class="nav">
-            <a href="#" class="active" data-page="home">HOME</a>
-            <a href="#" data-page="ongoing">ON-GOING</a>
-            <a href="#" data-page="complete">COMPLETED</a>
-            <a href="#" data-page="schedule">JADWAL RILIS</a>
-            <a href="#" data-page="genres">GENRE LIST</a>
-        </nav>
-        <div class="search-box">
-            <input type="text" id="searchInput" placeholder="Cari Anime..." />
-            <button id="searchBtn">🔍</button>
-        </div>
+  <!-- Jumbotron -->
+  <section class="hero">
+    <h1>Selamat Datang di Rayliziie Nime</h1>
+    <p>Nonton anime lengkap, kualitas HD, server stabil & gratis subtitle Indonesia.</p>
+  </section>
+
+  <!-- Pemutar Video -->
+  <section class="player-container" id="player-section" style="display:none;">
+    <div class="video-wrapper">
+      <iframe id="player" allowfullscreen allow="autoplay; encrypted-media; picture-in-picture"></iframe>
     </div>
-</header>
-
-<main class="container" id="mainContent">
-    <!-- Diisi oleh JavaScript -->
-</main>
-
-<footer class="footer">
-    <div class="container">
-        <p>&copy; 2026 Rayliziie Nime — Anime Subtitle Indonesia</p>
-        <p style="font-size:11px;color:#444466;margin-top:4px;">
-            Powered by Consumet · Aniwatch · AniList
-        </p>
+    <div class="video-info">
+      <h2 id="anime-title"></h2>
+      <p id="anime-synopsis"></p>
+      <div class="servers" id="servers-list"></div>
+      <h4>Daftar Episode</h4>
+      <div class="episodes" id="episodes-list"></div>
     </div>
-</footer>
+  </section>
 
-<script src="script.js"></script>
+  <!-- Daftar Anime -->
+  <section class="section">
+    <h2>Terbaru & Populer</h2>
+    <div class="anime-grid" id="anime-grid"></div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <p>© 2026 Rayliziie Nime. Semua konten milik pencipta masing-masing.</p>
+  </footer>
+
+  <script src="app.js"></script>
 </body>
 </html>
