@@ -1,36 +1,27 @@
 // ============================================================
-// RAYLIZIIE NIME - Main JavaScript
-// API: Jikan (metadata) + Multiple Streaming API
-// Streaming API: Consumet, Kuramanime, AniPub, 2Embed
+// RAYLIZIIE NIME - Full Multi-API Streaming
+// APIs: Consumet, Aniwatch, AniList
 // ============================================================
 
+// ============================================================
+// API CONFIGURATION
+// ============================================================
+
+const CONSUMET_API = 'https://api.consumet.org/anime/gogoanime';
+const ANIWATCH_API = 'https://aniwatch-api-v1-0.onrender.com/api';
+const ANILIST_API = 'https://graphql.anilist.co/';
 const JIKAN_API = 'https://api.jikan.moe/v4';
 
-// Daftar API streaming dengan fallback
-const STREAM_APIS = [
-    {
-        name: 'Consumet',
-        base: 'https://api.consumet.org/anime/gogoanime',
-        // akan diisi dinamis
-    },
-    {
-        name: 'Kuramanime',
-        base: 'https://kuramanime-api.vercel.app/api',
-    },
-    {
-        name: 'AniPub',
-        base: 'https://api.anipub.xyz',
-    }
+// Pilihan sumber streaming (untuk fallback)
+const STREAM_SOURCES = [
+    { name: 'Consumet', base: CONSUMET_API, priority: 1 },
+    { name: 'Aniwatch', base: ANIWATCH_API, priority: 2 },
 ];
 
-const EMBED_APIS = [
-    {
-        name: '2Embed',
-        url: (id, ep) => `https://2embed.stream/embed/anime/${id}/1/${ep}`
-    }
-];
+// ============================================================
+// STATE
+// ============================================================
 
-// State
 let currentPage = 'home';
 let currentPageNum = 1;
 let currentAnimeId = null;
@@ -39,7 +30,7 @@ let currentEpisode = 1;
 let currentEpisodeId = '';
 let currentSources = [];
 let currentQuality = 'default';
-let currentSource = 'gogoanime';
+let currentSourceName = 'Consumet';
 
 // DOM
 const mainContent = document.getElementById('mainContent');
@@ -48,28 +39,16 @@ const searchBtn = document.getElementById('searchBtn');
 const navLinks = document.querySelectorAll('.nav a');
 
 // ============================================================
-// API CALLS - JIKAN (Metadata)
+// FETCH HELPERS
 // ============================================================
 
-async function fetchJikan(endpoint) {
+async function fetchAPI(url, options = {}) {
     try {
-        const res = await fetch(`${JIKAN_API}${endpoint}`);
+        const res = await fetch(url, options);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return await res.json();
     } catch (err) {
-        console.error('Jikan Error:', err);
-        showError(`Gagal memuat data: ${err.message}`);
-        return null;
-    }
-}
-
-async function fetchAPI(url) {
-    try {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return await res.json();
-    } catch (err) {
-        console.warn('Fetch API error:', err);
+        console.warn('Fetch error:', err.message);
         return null;
     }
 }
@@ -84,7 +63,21 @@ function showError(msg) {
 }
 
 // ============================================================
-// RENDER GRID, DETAIL, DLL (SAMA SEPERTI SEBELUMNYA)
+// ANILIST GRAPHQL (Metadata)
+// ============================================================
+
+async function fetchAnilist(query, variables = {}) {
+    const body = JSON.stringify({ query, variables });
+    const data = await fetchAPI(ANILIST_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body
+    });
+    return data?.data || null;
+}
+
+// ============================================================
+// RENDER FUNCTIONS
 // ============================================================
 
 function renderAnimeGrid(data, title = 'Anime', subtitle = '') {
@@ -128,6 +121,14 @@ function renderAnimeGrid(data, title = 'Anime', subtitle = '') {
 
     html += `</div>`;
     mainContent.innerHTML = html;
+}
+
+// ============================================================
+// LOAD PAGES (Jikan API)
+// ============================================================
+
+async function fetchJikan(endpoint) {
+    return await fetchAPI(`${JIKAN_API}${endpoint}`);
 }
 
 async function loadPage(page = 'home', pageNum = 1) {
@@ -262,11 +263,16 @@ async function loadSearch(query) {
     renderAnimeGrid(data, `🔍 Hasil: "${query}"`);
 }
 
+// ============================================================
+// DETAIL ANIME (dari Jikan + Anilist)
+// ============================================================
+
 async function loadDetail(id) {
     if (!id) return;
     currentAnimeId = id;
     mainContent.innerHTML = `<div class="loading">Memuat detail...</div>`;
 
+    // Ambil dari Jikan
     const data = await fetchJikan(`/anime/${id}`);
     if (!data || !data.data) {
         mainContent.innerHTML = `<p style="color:var(--text-gray);">Gagal memuat detail.</p>`;
@@ -318,7 +324,7 @@ async function loadDetail(id) {
 }
 
 // ============================================================
-// PLAYER - DENGAN MULTI API FALLBACK
+// PLAYER - Multi-API Streaming
 // ============================================================
 
 async function loadPlayer(animeId, episode) {
@@ -326,13 +332,13 @@ async function loadPlayer(animeId, episode) {
     currentEpisode = episode;
     currentSources = [];
 
-    // Tampilkan player page
+    // Tampilkan player
     mainContent.innerHTML = `
         <div class="player-page">
             <button class="back-btn" onclick="loadDetail(${animeId})">← Kembali ke Detail</button>
             <div class="player-container">
                 <div class="loading-overlay" id="playerLoading">
-                    ⏳ Mencari link video dari ${currentSource || 'Gogoanime'}...
+                    ⏳ Mencari link video...
                 </div>
                 <video id="videoPlayer" controls style="width:100%;height:100%;display:none;">
                     <source id="videoSource" src="">
@@ -355,18 +361,16 @@ async function loadPlayer(animeId, episode) {
             </div>
 
             <div class="source-selector">
-                <button class="source-btn active" onclick="setSource('consumet')">Consumet</button>
-                <button class="source-btn" onclick="setSource('kuramanime')">Kuramanime</button>
-                <button class="source-btn" onclick="setSource('anipub')">AniPub</button>
-                <button class="source-btn" onclick="setSource('2embed')">2Embed</button>
+                <button class="source-btn active" onclick="setSource('Consumet')">Consumet</button>
+                <button class="source-btn" onclick="setSource('Aniwatch')">Aniwatch</button>
             </div>
-            <p class="source-hint">💡 Pilih sumber, video akan dimuat otomatis.</p>
+            <p class="source-hint">💡 Pilih sumber streaming. Jika satu gagal, coba yang lain.</p>
         </div>
     `;
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
-    // Mulai fetch
+    // Mulai fetch video
     await fetchAndPlayVideo(animeId, episode);
 }
 
@@ -389,26 +393,28 @@ async function fetchAndPlayVideo(animeId, episode) {
 
     let videoSources = [];
 
-    // Coba semua streaming API sesuai urutan
-    const apiAttempts = [
-        { name: 'Consumet', fn: fetchFromConsumet },
-        { name: 'Kuramanime', fn: fetchFromKuramanime },
-        { name: 'AniPub', fn: fetchFromAniPub }
-    ];
+    // Coba semua API sesuai urutan prioritas
+    // 1. Consumet
+    loading.textContent = '⏳ Mencoba Consumet...';
+    let result = await fetchFromConsumet(animeId, episode);
+    if (result && result.sources && result.sources.length > 0) {
+        videoSources = result.sources;
+        currentSourceName = 'Consumet';
+    }
 
-    for (const attempt of apiAttempts) {
-        loading.textContent = `⏳ Mencoba ${attempt.name}...`;
-        const result = await attempt.fn(animeId, episode);
+    // 2. Jika gagal, coba Aniwatch
+    if (videoSources.length === 0) {
+        loading.textContent = '⏳ Mencoba Aniwatch...';
+        result = await fetchFromAniwatch(animeId, episode);
         if (result && result.sources && result.sources.length > 0) {
             videoSources = result.sources;
-            currentSource = attempt.name.toLowerCase();
-            break;
+            currentSourceName = 'Aniwatch';
         }
     }
 
-    // Jika tidak ada sources dari API, coba embed
+    // 3. Jika masih gagal, gunakan 2Embed sebagai fallback
     if (videoSources.length === 0) {
-        // Coba 2Embed
+        loading.textContent = '⏳ Mencoba 2Embed...';
         const embedUrl = `https://2embed.stream/embed/anime/${animeId}/1/${episode}`;
         loading.classList.add('hidden');
         video.style.display = 'none';
@@ -435,7 +441,10 @@ async function fetchAndPlayVideo(animeId, episode) {
     });
     qualityContainer.innerHTML = qualityHTML;
 
-    // Pilih kualitas terbaik (angka tertinggi)
+    // Simpan sources global
+    window._currentSources = videoSources;
+
+    // Pilih kualitas terbaik
     let selected = videoSources.reduce((a, b) => {
         const qA = parseInt(a.quality) || 0;
         const qB = parseInt(b.quality) || 0;
@@ -444,34 +453,50 @@ async function fetchAndPlayVideo(animeId, episode) {
     if (!selected) selected = videoSources[0];
 
     if (selected && selected.url) {
-        source.src = selected.url;
-        video.load();
-        video.play().catch(() => console.warn('Autoplay blocked'));
+        // Jika .m3u8, gunakan HLS.js
+        if (selected.url.includes('.m3u8')) {
+            if (Hls.isSupported()) {
+                const hls = new Hls();
+                hls.loadSource(selected.url);
+                hls.attachMedia(video);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    video.play().catch(() => console.warn('Autoplay blocked'));
+                });
+            } else {
+                source.src = selected.url;
+                video.load();
+                video.play().catch(() => console.warn('Autoplay blocked'));
+            }
+        } else {
+            source.src = selected.url;
+            video.load();
+            video.play().catch(() => console.warn('Autoplay blocked'));
+        }
     }
 }
 
 // ============================================================
-// FUNGSI FETCH PER API
+// FETCH FUNCTIONS PER API
 // ============================================================
 
-// 1. CONSUMET API
+// 1. CONSUMET
 async function fetchFromConsumet(animeId, episode) {
     try {
-        const searchUrl = `https://api.consumet.org/anime/gogoanime/search?keyw=${encodeURIComponent(currentAnimeTitle)}`;
-        const searchData = await fetchAPI(searchUrl);
-        if (!searchData || !searchData.results || searchData.results.length === 0) return null;
+        // Cari anime ID di Gogoanime
+        const search = await fetchAPI(`${CONSUMET_API}/search?keyw=${encodeURIComponent(currentAnimeTitle)}`);
+        if (!search || !search.results || search.results.length === 0) return null;
 
-        const gogoId = searchData.results[0].id;
-        const info = await fetchAPI(`https://api.consumet.org/anime/gogoanime/info/${gogoId}`);
+        const gogoId = search.results[0].id;
+        const info = await fetchAPI(`${CONSUMET_API}/info/${gogoId}`);
         if (!info || !info.episodes) return null;
 
         const epData = info.episodes.find(e => e.number == episode);
         if (!epData || !epData.id) return null;
 
-        const watchData = await fetchAPI(`https://api.consumet.org/anime/gogoanime/watch/${epData.id}`);
-        if (!watchData || !watchData.sources || watchData.sources.length === 0) return null;
+        const watch = await fetchAPI(`${CONSUMET_API}/watch/${epData.id}`);
+        if (!watch || !watch.sources || watch.sources.length === 0) return null;
 
-        const sources = watchData.sources.map(s => ({
+        const sources = watch.sources.map(s => ({
             url: s.url,
             quality: s.quality || 'default',
             isM3U8: s.url && s.url.includes('.m3u8')
@@ -484,56 +509,38 @@ async function fetchFromConsumet(animeId, episode) {
     }
 }
 
-// 2. KURAMANIME API
-async function fetchFromKuramanime(animeId, episode) {
+// 2. ANIWATCH
+async function fetchFromAniwatch(animeId, episode) {
     try {
-        // Kuramanime membutuhkan slug, kita buat slug dari judul
-        const slug = currentAnimeTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-        const url = `https://kuramanime-api.vercel.app/api/anime/${slug}/${episode}`;
-        const data = await fetchAPI(url);
-        if (!data || !data.servers || data.servers.length === 0) return null;
+        // Cari anime di Aniwatch
+        const search = await fetchAPI(`${ANIWATCH_API}/search?q=${encodeURIComponent(currentAnimeTitle)}`);
+        if (!search || !search.data || search.data.length === 0) return null;
 
-        // Ambil server pertama yang punya link video
-        for (const server of data.servers) {
-            if (server.url && (server.url.includes('.mp4') || server.url.includes('.m3u8'))) {
-                return {
-                    sources: [{
-                        url: server.url,
-                        quality: server.quality || 'default',
-                        isM3U8: server.url.includes('.m3u8')
-                    }]
-                };
-            }
-        }
-        return null;
+        const aniId = search.data[0].id;
+        const info = await fetchAPI(`${ANIWATCH_API}/anime/${aniId}`);
+        if (!info || !info.episodes || !info.episodes.length) return null;
+
+        const epData = info.episodes.find(e => e.number == episode);
+        if (!epData || !epData.id) return null;
+
+        // Ambil server streaming
+        const servers = await fetchAPI(`${ANIWATCH_API}/episode/${epData.id}/servers`);
+        if (!servers || !servers.data || servers.data.length === 0) return null;
+
+        // Ambil source dari server pertama
+        const serverId = servers.data[0].id;
+        const watch = await fetchAPI(`${ANIWATCH_API}/episode/${epData.id}/source/${serverId}`);
+        if (!watch || !watch.data || !watch.data.sources) return null;
+
+        const sources = watch.data.sources.map(s => ({
+            url: s.url,
+            quality: s.quality || 'default',
+            isM3U8: s.url && s.url.includes('.m3u8')
+        }));
+
+        return { sources };
     } catch (err) {
-        console.warn('Kuramanime error:', err);
-        return null;
-    }
-}
-
-// 3. ANIPUB API
-async function fetchFromAniPub(animeId, episode) {
-    try {
-        // AniPub butuh ID string, kita coba dengan judul
-        const searchUrl = `https://api.anipub.xyz/api/search?q=${encodeURIComponent(currentAnimeTitle)}`;
-        const searchData = await fetchAPI(searchUrl);
-        if (!searchData || !searchData.data || searchData.data.length === 0) return null;
-
-        const aniId = searchData.data[0].id;
-        const watchUrl = `https://api.anipub.xyz/api/watch/${aniId}/${episode}`;
-        const watchData = await fetchAPI(watchUrl);
-        if (!watchData || !watchData.streaming || !watchData.streaming.url) return null;
-
-        return {
-            sources: [{
-                url: watchData.streaming.url,
-                quality: watchData.streaming.quality || 'default',
-                isM3U8: watchData.streaming.url.includes('.m3u8')
-            }]
-        };
-    } catch (err) {
-        console.warn('AniPub error:', err);
+        console.warn('Aniwatch error:', err);
         return null;
     }
 }
@@ -554,7 +561,6 @@ function setQuality(quality) {
     const source = document.getElementById('videoSource');
     if (!video || !source) return;
 
-    // Ambil sources dari global
     const allSources = window._currentSources || [];
     let selected = allSources.find(s => s.quality == quality);
     if (!selected && quality === 'default') {
@@ -578,15 +584,14 @@ function setQuality(quality) {
 // ============================================================
 
 function setSource(source) {
-    currentSource = source;
+    currentSourceName = source;
     document.querySelectorAll('.source-btn').forEach(btn => {
         btn.classList.remove('active');
-        if (btn.textContent.toLowerCase().includes(source)) {
+        if (btn.textContent.toLowerCase().includes(source.toLowerCase())) {
             btn.classList.add('active');
         }
     });
     if (currentAnimeId && currentEpisode) {
-        // Reload player dengan source baru
         fetchAndPlayVideo(currentAnimeId, currentEpisode);
     }
 }
