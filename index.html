@@ -5,41 +5,40 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Rayliziie Nime - Streaming Anime</title>
     <link rel="stylesheet" href="style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 </head>
 <body>
 
-    <header class="header">
-        <div class="container">
-            <div class="logo" onclick="goHome()">🎬 Rayliziie<span>Nime</span></div>
-            <nav class="nav">
-                <a href="#" class="active" data-page="home">HOME</a>
-                <a href="#" data-page="ongoing">ON-GOING</a>
-                <a href="#" data-page="complete">COMPLETED</a>
-                <a href="#" data-page="schedule">JADWAL RILIS</a>
-                <a href="#" data-page="genres">GENRE LIST</a>
-            </nav>
-            <div class="search-box">
-                <input type="text" id="searchInput" placeholder="Cari Anime..." />
-                <button id="searchBtn">🔍</button>
-            </div>
+<header class="header">
+    <div class="container">
+        <div class="logo" onclick="goHome()">🎬 Rayliziie<span>Nime</span></div>
+        <nav class="nav">
+            <a href="#" class="active" data-page="home">HOME</a>
+            <a href="#" data-page="ongoing">ON-GOING</a>
+            <a href="#" data-page="complete">COMPLETED</a>
+            <a href="#" data-page="schedule">JADWAL RILIS</a>
+            <a href="#" data-page="genres">GENRE LIST</a>
+        </nav>
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="Cari Anime..." />
+            <button id="searchBtn">🔍</button>
         </div>
-    </header>
+    </div>
+</header>
 
-    <main class="container" id="mainContent">
-        <!-- Akan diisi JavaScript -->
-    </main>
+<main class="container" id="mainContent">
+    <!-- Diisi oleh JavaScript -->
+</main>
 
-    <footer class="footer">
-        <div class="container">
-            <p>&copy; 2026 Rayliziie Nime — Anime Subtitle Indonesia</p>
-            <p style="font-size:11px;color:#444466;margin-top:4px;">
-                Powered by Consumet · Aniwatch · AniList
-            </p>
-        </div>
-    </footer>
+<footer class="footer">
+    <div class="container">
+        <p>&copy; 2026 Rayliziie Nime — Anime Subtitle Indonesia</p>
+        <p style="font-size:11px;color:#444466;margin-top:4px;">
+            Powered by Consumet · Aniwatch · AniList
+        </p>
+    </div>
+</footer>
 
-    <!-- HLS.js untuk stream m3u8 -->
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-    <script src="script.js"></script>
+<script src="script.js"></script>
 </body>
 </html>
