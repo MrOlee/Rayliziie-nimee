@@ -220,9 +220,7 @@ body {
 }
 
 @keyframes spin {
-    to {
-        transform: rotate(360deg);
-    }
+    to { transform: rotate(360deg); }
 }
 
 /* DETAIL */
@@ -340,10 +338,12 @@ body {
     position: relative;
 }
 
-.player-container video {
+.player-container video,
+.player-container iframe {
     width: 100%;
     height: 100%;
     display: block;
+    border: none;
     background: #000;
 }
 
@@ -366,7 +366,6 @@ body {
     display: none;
 }
 
-/* Quality selector */
 .quality-selector {
     display: flex;
     gap: 8px;
